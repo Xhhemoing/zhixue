@@ -1,0 +1,43 @@
+
+<div class="flex h-screen w-screen bg-[#0B0F19] overflow-hidden selection:bg-indigo-500/30 text-gray-200 font-sans">
+  
+  <!-- Sidebar Navigation -->
+  <app-sidebar class="shrink-0 z-20 shadow-xl"></app-sidebar>
+
+  <!-- Main Content Area -->
+  <main class="flex-1 relative overflow-hidden flex flex-col">
+    
+    <!-- Background Gradient Decoration -->
+    <div class="absolute top-0 left-0 w-full h-96 bg-gradient-to-b from-indigo-900/10 to-transparent pointer-events-none"></div>
+
+    <!-- Content Components (All active, hidden via CSS to preserve state) -->
+    <div class="flex-1 relative z-10 overflow-hidden">
+      
+      <div [style.display]="store.activeTab() === 'collect' ? 'block' : 'none'" class="h-full">
+        <app-mistake-ingest></app-mistake-ingest>
+      </div>
+
+      <div [style.display]="store.activeTab() === 'library' ? 'block' : 'none'" class="h-full">
+        <app-library></app-library>
+      </div>
+
+      <div [style.display]="store.activeTab() === 'review' ? 'block' : 'none'" class="h-full">
+        <app-review-deck></app-review-deck>
+      </div>
+
+      <div [style.display]="store.activeTab() === 'notebook' ? 'block' : 'none'" class="h-full">
+        <app-notebook></app-notebook>
+      </div>
+
+      <div [style.display]="store.activeTab() === 'dashboard' ? 'block' : 'none'" class="h-full">
+        <app-dashboard></app-dashboard>
+      </div>
+
+      <div [style.display]="store.activeTab() === 'settings' ? 'block' : 'none'" class="h-full">
+        <app-settings></app-settings>
+      </div>
+
+    </div>
+
+  </main>
+</div>
