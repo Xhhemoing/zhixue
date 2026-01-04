@@ -1,6 +1,7 @@
 
 import { Component, inject, computed, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms'; // Added FormsModule
 import { DomSanitizer } from '@angular/platform-browser';
 import { StudyStoreService, Mistake } from '../services/study-store.service';
 
@@ -10,7 +11,7 @@ declare const katex: any;
 @Component({
   selector: 'app-review-deck',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, FormsModule], // Added FormsModule
   template: `
     <div class="h-full flex flex-col p-4 md:p-8 overflow-hidden">
       <header class="mb-4 md:mb-8 flex justify-between items-end shrink-0">
@@ -99,7 +100,7 @@ declare const katex: any;
            </div>
 
            <!-- Action Area -->
-           <div class="h-20 shrink-0 mt-6">
+           <div class="h-20 shrink-0 mt-6 relative">
               @if (!isRevealed()) {
                 <div class="flex items-center justify-center h-full">
                   <button (click)="reveal()" class="w-full md:w-auto px-12 py-3 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-white font-bold shadow-lg shadow-indigo-900/20 transition-all transform hover:scale-105">
@@ -107,15 +108,36 @@ declare const katex: any;
                   </button>
                 </div>
               } @else {
-                <div class="grid grid-cols-3 gap-4 h-full animate-fade-in-up">
+                <div class="grid grid-cols-4 gap-4 h-full animate-fade-in-up">
                   <button (click)="rate('bad')" class="bg-[#18181b] border border-gray-700 hover:border-red-500/50 hover:bg-red-900/10 rounded-xl flex flex-col items-center justify-center transition-all">
                     <span class="text-red-400 font-bold">忘记</span>
+                    <span class="text-[10px] text-gray-500 mt-1">1天后</span>
                   </button>
                   <button (click)="rate('good')" class="bg-[#18181b] border border-gray-700 hover:border-blue-500/50 hover:bg-blue-900/10 rounded-xl flex flex-col items-center justify-center transition-all">
                      <span class="text-blue-400 font-bold">模糊</span>
+                     <span class="text-[10px] text-gray-500 mt-1">3天后</span>
                   </button>
                   <button (click)="rate('good')" class="bg-[#18181b] border border-gray-700 hover:border-green-500/50 hover:bg-green-900/10 rounded-xl flex flex-col items-center justify-center transition-all">
                      <span class="text-green-400 font-bold">简单</span>
+                     <span class="text-[10px] text-gray-500 mt-1">7天后</span>
+                  </button>
+                  
+                  <!-- Reschedule Button -->
+                  <button (click)="showReschedule.set(true)" class="bg-[#18181b] border border-gray-700 hover:border-gray-500 hover:bg-gray-800 rounded-xl flex flex-col items-center justify-center transition-all relative">
+                     <span class="text-gray-300 font-bold">调整计划</span>
+                     <span class="text-[10px] text-gray-500 mt-1">自定义...</span>
+                     
+                     <!-- Popup -->
+                     @if(showReschedule()) {
+                         <div class="absolute bottom-full right-0 mb-2 w-64 bg-[#111827] border border-gray-700 rounded-xl shadow-2xl p-4 z-50 cursor-default" (click)="$event.stopPropagation()">
+                            <h4 class="text-xs font-bold text-gray-400 mb-2 uppercase">推迟至:</h4>
+                            <input type="date" #dateInput class="w-full bg-[#18181b] border border-gray-700 rounded p-2 text-sm text-white mb-2" [value]="todayStr">
+                            <div class="flex gap-2">
+                                <button (click)="scheduleCustom(dateInput.value)" class="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white text-xs py-1.5 rounded">确认</button>
+                                <button (click)="showReschedule.set(false)" class="flex-1 bg-gray-700 hover:bg-gray-600 text-white text-xs py-1.5 rounded">取消</button>
+                            </div>
+                         </div>
+                     }
                   </button>
                 </div>
               }
@@ -141,6 +163,9 @@ export class ReviewDeckComponent {
   sanitizer: DomSanitizer = inject(DomSanitizer);
   sessionId = Math.random().toString(36).substring(7).toUpperCase();
   isRevealed = signal(false);
+  showReschedule = signal(false);
+  
+  todayStr = new Date().toISOString().split('T')[0];
   
   dueCards = computed(() => {
     const now = Date.now();
@@ -157,6 +182,16 @@ export class ReviewDeckComponent {
       this.store.scheduleNextReview(this.currentCard()!.id, rating);
       this.isRevealed.set(false);
     }
+  }
+
+  scheduleCustom(dateStr: string) {
+      if(!dateStr) return;
+      const ts = new Date(dateStr).getTime();
+      if (this.currentCard()) {
+          this.store.scheduleNextReview(this.currentCard()!.id, 'custom', ts);
+          this.isRevealed.set(false);
+          this.showReschedule.set(false);
+      }
   }
 
   isCorrectOption(opt: string): boolean {

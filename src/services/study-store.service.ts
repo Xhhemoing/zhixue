@@ -162,16 +162,28 @@ export class StudyStoreService {
     this.mistakes.update(current => current.filter(m => m.id !== id));
   }
 
-  scheduleNextReview(id: string, performance: 'good' | 'bad') {
+  scheduleNextReview(id: string, performance: 'good' | 'bad' | 'custom', customDate?: number) {
     this.mistakes.update(current => current.map(m => {
       if (m.id !== id) return m;
-      const baseDelay = 1000 * 60 * 60 * 24; // 1 day
-      let multiplier = m.reviewCount + 1;
-      if (performance === 'bad') multiplier = 0.5;
+      
+      let nextTime = 0;
+      let reviewCount = m.reviewCount;
+
+      if (performance === 'custom' && customDate) {
+          nextTime = customDate;
+          // Don't increment count for manual adjustments usually, or maybe do? let's keep it neutral
+      } else {
+          const baseDelay = 1000 * 60 * 60 * 24; // 1 day
+          let multiplier = m.reviewCount + 1;
+          if (performance === 'bad') multiplier = 0.5;
+          nextTime = Date.now() + (baseDelay * multiplier);
+          reviewCount++;
+      }
+
       return {
         ...m,
-        reviewCount: m.reviewCount + 1,
-        nextReviewAt: Date.now() + (baseDelay * multiplier)
+        reviewCount: reviewCount,
+        nextReviewAt: nextTime
       };
     }));
   }
@@ -191,7 +203,6 @@ export class StudyStoreService {
   ensureFolderExists(path: string) {
      if (!path || path === '未分类') return;
      this.folders.update(current => {
-         // Add the path and all parent paths
          const newFolders = new Set(current);
          const parts = path.split('/');
          let accumulator = '';
@@ -199,8 +210,18 @@ export class StudyStoreService {
              accumulator += (i > 0 ? '/' : '') + part;
              newFolders.add(accumulator);
          });
-         return Array.from(newFolders);
+         return Array.from(newFolders).sort();
      });
+  }
+
+  deleteFolder(path: string) {
+      if (!confirm(`确定要删除文件夹 "${path}" 及其包含的所有内容吗?`)) return;
+      
+      // 1. Remove notes inside this folder (and subfolders)
+      this.notes.update(curr => curr.filter(n => !n.folder.startsWith(path)));
+      
+      // 2. Remove folder entries
+      this.folders.update(curr => curr.filter(f => !f.startsWith(path)));
   }
   
   setFolders(folders: string[]) {
@@ -264,7 +285,9 @@ export class StudyStoreService {
   }
 
   deleteNote(id: string) {
-      this.notes.update(curr => curr.filter(n => n.id !== id));
+      if (confirm('确定要永久删除这条笔记吗？')) {
+        this.notes.update(curr => curr.filter(n => n.id !== id));
+      }
   }
 
   // --- System ---

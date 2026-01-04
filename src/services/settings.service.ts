@@ -5,9 +5,10 @@ import { StudyStoreService } from './study-store.service';
 export interface AIProvider {
   id: string;
   name: string;
+  type: 'google' | 'openai'; // Added type
   baseUrl: string; // Optional, empty for default Google
   apiKey: string;
-  models: string[];
+  models: string[]; // List of available models
 }
 
 export interface ModelAssignment {
@@ -34,26 +35,25 @@ export interface AppSettings {
   };
 }
 
-export const BUILTIN_MODELS = [
+const DEFAULT_PROVIDER_ID = 'google-official';
+
+// Initial defaults
+const GOOGLE_MODELS = [
   'gemini-2.5-flash',
-  'gemini-3.0-flash-preview',
-  'gemini-2.0-flash-lite-preview-02-05',
-  'gemini-1.5-flash-latest',
   'gemini-2.0-flash',
   'gemini-1.5-flash',
   'gemini-1.5-pro'
 ];
-
-const DEFAULT_PROVIDER_ID = 'google-official';
 
 const DEFAULT_SETTINGS: AppSettings = {
   providers: [
     {
       id: DEFAULT_PROVIDER_ID,
       name: 'Google Official',
+      type: 'google',
       baseUrl: '',
-      apiKey: '', // Will fallback to env if empty in service
-      models: BUILTIN_MODELS
+      apiKey: '', 
+      models: GOOGLE_MODELS
     }
   ],
   assignments: {
@@ -78,7 +78,6 @@ const DEFAULT_SETTINGS: AppSettings = {
 })
 export class SettingsService {
   readonly settings = signal<AppSettings>(DEFAULT_SETTINGS);
-  readonly builtInModels = BUILTIN_MODELS;
   
   private studyStore = inject(StudyStoreService);
 
@@ -86,21 +85,26 @@ export class SettingsService {
     this.loadSettings();
     
     effect(() => {
-      localStorage.setItem('nexus_settings_v2', JSON.stringify(this.settings()));
+      localStorage.setItem('nexus_settings_v3', JSON.stringify(this.settings()));
     });
   }
 
   private loadSettings() {
-    const stored = localStorage.getItem('nexus_settings_v2');
+    const stored = localStorage.getItem('nexus_settings_v3');
     if (stored) {
       try {
         const parsed = JSON.parse(stored);
         
-        // Merge to ensure new fields (like new prompts) exist if loading old data
+        // Merge strategy for V3
         const merged = {
             ...DEFAULT_SETTINGS,
             ...parsed,
-            providers: parsed.providers?.map((p: any) => ({ ...{models: BUILTIN_MODELS}, ...p })) || DEFAULT_SETTINGS.providers,
+            // Ensure providers have new fields if coming from V2
+            providers: parsed.providers?.map((p: any) => ({ 
+                ...p, 
+                type: p.type || 'google',
+                models: p.models && p.models.length > 0 ? p.models : GOOGLE_MODELS 
+            })) || DEFAULT_SETTINGS.providers,
             prompts: { ...DEFAULT_SETTINGS.prompts, ...parsed.prompts },
             assignments: { ...DEFAULT_SETTINGS.assignments, ...parsed.assignments }
         };
@@ -111,32 +115,16 @@ export class SettingsService {
         this.settings.set(DEFAULT_SETTINGS);
       }
     } else {
-        // Migration from V1 settings if V2 doesn't exist
-        const oldStored = localStorage.getItem('nexus_settings');
-        if (oldStored) {
-            try {
-                const old = JSON.parse(oldStored);
-                const migrated = { ...DEFAULT_SETTINGS };
-                if (old.api?.key) {
-                    migrated.providers[0].apiKey = old.api.key;
-                    migrated.providers[0].baseUrl = old.api.baseUrl || '';
-                }
-                if (old.subjects) migrated.subjects = old.subjects;
-                this.settings.set(migrated);
-            } catch(e) {
-                this.settings.set(DEFAULT_SETTINGS);
-            }
-        } else {
-             this.settings.set(DEFAULT_SETTINGS);
-        }
+        // Fallback or migration could go here
+        this.settings.set(DEFAULT_SETTINGS);
     }
   }
 
   // Provider Management
-  addProvider(provider: Omit<AIProvider, 'id' | 'models'>) {
+  addProvider(provider: Omit<AIProvider, 'id'>) {
     this.settings.update(s => ({
         ...s,
-        providers: [...s.providers, { ...provider, id: crypto.randomUUID(), models: [] }]
+        providers: [...s.providers, { ...provider, id: crypto.randomUUID() }]
     }));
   }
 
@@ -148,7 +136,7 @@ export class SettingsService {
   }
 
   removeProvider(id: string) {
-    if (id === DEFAULT_PROVIDER_ID) return; // Prevent deleting default
+    if (id === DEFAULT_PROVIDER_ID) return; 
     this.settings.update(s => ({
         ...s,
         providers: s.providers.filter(p => p.id !== id)

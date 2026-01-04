@@ -80,7 +80,7 @@ import { StudyStoreService } from '../services/study-store.service';
              <div class="max-w-4xl space-y-8 animate-fade-in">
                 <div>
                     <h2 class="text-xl font-semibold text-white mb-2">服务商管理</h2>
-                    <p class="text-sm text-gray-500 mb-6">配置 API 服务商。您可以添加 Google 官方服务或兼容的第三方转发服务。</p>
+                    <p class="text-sm text-gray-500 mb-6">配置 API 服务商。您可以添加 Google 官方服务或兼容 OpenAI 格式的服务。</p>
                 </div>
 
                 <div class="space-y-4">
@@ -93,17 +93,36 @@ import { StudyStoreService } from '../services/study-store.service';
                                            class="w-full bg-[#0B0F19] border border-gray-700 rounded px-3 py-2 text-sm text-white outline-none focus:border-indigo-500">
                                 </div>
                                 <div>
+                                    <label class="block text-xs font-bold text-gray-400 mb-1">API Type</label>
+                                    <select [ngModel]="provider.type" (ngModelChange)="updateProvider(provider.id, 'type', $event)" 
+                                            class="w-full bg-[#0B0F19] border border-gray-700 rounded px-3 py-2 text-sm text-white outline-none focus:border-indigo-500">
+                                        <option value="google">Google Gemini</option>
+                                        <option value="openai">OpenAI Compatible</option>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <div class="grid grid-cols-2 gap-4 mb-4">
+                                <div>
                                     <label class="block text-xs font-bold text-gray-400 mb-1">API Key</label>
                                     <input [ngModel]="provider.apiKey" (ngModelChange)="updateProvider(provider.id, 'apiKey', $event)" 
                                            type="password" placeholder="sk-..." 
                                            class="w-full bg-[#0B0F19] border border-gray-700 rounded px-3 py-2 text-sm text-white outline-none focus:border-indigo-500">
                                 </div>
+                                <div>
+                                    <label class="block text-xs font-bold text-gray-400 mb-1">Base URL (可选)</label>
+                                    <input [ngModel]="provider.baseUrl" (ngModelChange)="updateProvider(provider.id, 'baseUrl', $event)" 
+                                           placeholder="例如: https://api.openai.com/v1" 
+                                           class="w-full bg-[#0B0F19] border border-gray-700 rounded px-3 py-2 text-sm text-white outline-none focus:border-indigo-500 font-mono">
+                                </div>
                             </div>
+                            
                             <div class="mb-2">
-                                <label class="block text-xs font-bold text-gray-400 mb-1">Base URL (可选代理地址)</label>
-                                <input [ngModel]="provider.baseUrl" (ngModelChange)="updateProvider(provider.id, 'baseUrl', $event)" 
-                                       placeholder="https://generativelanguage.googleapis.com" 
+                                <label class="block text-xs font-bold text-gray-400 mb-1">可用模型 (逗号分隔)</label>
+                                <input [ngModel]="provider.models.join(', ')" (ngModelChange)="updateProviderModels(provider.id, $event)" 
+                                       placeholder="例如: gpt-4o, gpt-3.5-turbo" 
                                        class="w-full bg-[#0B0F19] border border-gray-700 rounded px-3 py-2 text-sm text-white outline-none focus:border-indigo-500 font-mono">
+                                <p class="text-[10px] text-gray-500 mt-1">请手动输入该服务商支持的模型ID，以便在分配界面选择。</p>
                             </div>
                             
                             @if (provider.id !== 'google-official') {
@@ -128,85 +147,31 @@ import { StudyStoreService } from '../services/study-store.service';
                <p class="text-xs text-gray-500 mb-6">为不同任务指定使用的服务商和模型ID。</p>
                
                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <!-- OCR Model -->
-                  <div class="bg-[#18181b] border border-gray-700 rounded-xl p-6 shadow-lg shadow-black/20">
-                     <div class="flex items-center gap-2 mb-4 border-b border-gray-700 pb-2">
-                        <span class="p-1.5 bg-blue-500/10 text-blue-400 rounded-lg"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg></span>
-                        <h3 class="font-bold text-white text-sm">图片识别 (OCR)</h3>
-                     </div>
-                     
-                     <div class="space-y-4">
-                        <div>
-                            <label class="block text-[10px] font-bold text-gray-500 uppercase mb-1">服务商</label>
-                            <select [ngModel]="settings.settings().assignments.ocr.providerId" (ngModelChange)="updateAssignment('ocr', 'providerId', $event)" 
-                                    class="w-full bg-[#0B0F19] border border-gray-700 rounded px-3 py-2 text-sm text-white outline-none focus:border-indigo-500">
-                                @for(p of settings.settings().providers; track p.id) { <option [value]="p.id">{{p.name}}</option> }
-                            </select>
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-bold text-gray-500 uppercase mb-1">模型ID</label>
-                            <div class="relative">
-                                <input [ngModel]="settings.settings().assignments.ocr.modelId" (ngModelChange)="updateAssignment('ocr', 'modelId', $event)" 
-                                    list="models_list"
-                                    class="w-full bg-[#0B0F19] border border-gray-700 rounded px-3 py-2 text-sm text-white outline-none focus:border-indigo-500 font-mono">
+                  @for (task of ['ocr', 'reasoning', 'notes']; track task) {
+                      <div class="bg-[#18181b] border border-gray-700 rounded-xl p-6 shadow-lg shadow-black/20">
+                         <div class="flex items-center gap-2 mb-4 border-b border-gray-700 pb-2">
+                            <span class="p-1.5 bg-indigo-500/10 text-indigo-400 rounded-lg font-bold uppercase text-xs">{{getTaskLabel(task)}}</span>
+                         </div>
+                         
+                         <div class="space-y-4">
+                            <div>
+                                <label class="block text-[10px] font-bold text-gray-500 uppercase mb-1">服务商</label>
+                                <select [ngModel]="getAssignment(task).providerId" (ngModelChange)="updateAssignment(task, 'providerId', $event)" 
+                                        class="w-full bg-[#0B0F19] border border-gray-700 rounded px-3 py-2 text-sm text-white outline-none focus:border-indigo-500">
+                                    @for(p of settings.settings().providers; track p.id) { <option [value]="p.id">{{p.name}}</option> }
+                                </select>
                             </div>
-                        </div>
-                     </div>
-                  </div>
-
-                  <!-- Reasoning Model -->
-                  <div class="bg-[#18181b] border border-gray-700 rounded-xl p-6 shadow-lg shadow-black/20">
-                     <div class="flex items-center gap-2 mb-4 border-b border-gray-700 pb-2">
-                        <span class="p-1.5 bg-purple-500/10 text-purple-400 rounded-lg"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg></span>
-                        <h3 class="font-bold text-white text-sm">深度推理 & 解析</h3>
-                     </div>
-                     
-                     <div class="space-y-4">
-                        <div>
-                            <label class="block text-[10px] font-bold text-gray-500 uppercase mb-1">服务商</label>
-                            <select [ngModel]="settings.settings().assignments.reasoning.providerId" (ngModelChange)="updateAssignment('reasoning', 'providerId', $event)" 
-                                    class="w-full bg-[#0B0F19] border border-gray-700 rounded px-3 py-2 text-sm text-white outline-none focus:border-indigo-500">
-                                @for(p of settings.settings().providers; track p.id) { <option [value]="p.id">{{p.name}}</option> }
-                            </select>
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-bold text-gray-500 uppercase mb-1">模型ID</label>
-                            <input [ngModel]="settings.settings().assignments.reasoning.modelId" (ngModelChange)="updateAssignment('reasoning', 'modelId', $event)" 
-                                   list="models_list"
-                                   class="w-full bg-[#0B0F19] border border-gray-700 rounded px-3 py-2 text-sm text-white outline-none focus:border-indigo-500 font-mono">
-                        </div>
-                     </div>
-                  </div>
-
-                  <!-- Notes Model -->
-                  <div class="bg-[#18181b] border border-gray-700 rounded-xl p-6 shadow-lg shadow-black/20">
-                     <div class="flex items-center gap-2 mb-4 border-b border-gray-700 pb-2">
-                        <span class="p-1.5 bg-green-500/10 text-green-400 rounded-lg"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></span>
-                        <h3 class="font-bold text-white text-sm">笔记润色</h3>
-                     </div>
-                     
-                     <div class="space-y-4">
-                        <div>
-                            <label class="block text-[10px] font-bold text-gray-500 uppercase mb-1">服务商</label>
-                            <select [ngModel]="settings.settings().assignments.notes.providerId" (ngModelChange)="updateAssignment('notes', 'providerId', $event)" 
-                                    class="w-full bg-[#0B0F19] border border-gray-700 rounded px-3 py-2 text-sm text-white outline-none focus:border-indigo-500">
-                                @for(p of settings.settings().providers; track p.id) { <option [value]="p.id">{{p.name}}</option> }
-                            </select>
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-bold text-gray-500 uppercase mb-1">模型ID</label>
-                            <input [ngModel]="settings.settings().assignments.notes.modelId" (ngModelChange)="updateAssignment('notes', 'modelId', $event)" 
-                                   list="models_list"
-                                   class="w-full bg-[#0B0F19] border border-gray-700 rounded px-3 py-2 text-sm text-white outline-none focus:border-indigo-500 font-mono">
-                        </div>
-                     </div>
-                  </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-gray-500 uppercase mb-1">模型ID</label>
+                                <select [ngModel]="getAssignment(task).modelId" (ngModelChange)="updateAssignment(task, 'modelId', $event)" 
+                                       class="w-full bg-[#0B0F19] border border-gray-700 rounded px-3 py-2 text-sm text-white outline-none focus:border-indigo-500 font-mono">
+                                    @for(m of getModelsForAssignment(task); track m) { <option [value]="m">{{m}}</option> }
+                                </select>
+                            </div>
+                         </div>
+                      </div>
+                  }
                </div>
-
-               <!-- Datalist for autocomplete -->
-               <datalist id="models_list">
-                  @for(m of settings.builtInModels; track m) { <option [value]="m"></option> }
-               </datalist>
              </div>
            }
 
@@ -316,18 +281,40 @@ export class SettingsComponent {
   addNewProvider() {
       this.settings.addProvider({
           name: 'New Provider',
+          type: 'openai',
           apiKey: '',
-          baseUrl: ''
+          baseUrl: '',
+          models: ['gpt-4o', 'gpt-3.5-turbo']
       });
   }
 
   updateProvider(id: string, field: keyof AIProvider, value: string) {
       this.settings.updateProvider(id, { [field]: value });
   }
+  
+  updateProviderModels(id: string, value: string) {
+      const models = value.split(',').map(s => s.trim()).filter(s => s);
+      this.settings.updateProvider(id, { models });
+  }
 
   // Assignments
-  updateAssignment(task: 'ocr'|'reasoning'|'notes', field: 'providerId'|'modelId', value: string) {
+  getAssignment(task: any) {
+      return (this.settings.settings().assignments as any)[task];
+  }
+  
+  updateAssignment(task: any, field: 'providerId'|'modelId', value: string) {
       this.settings.updateAssignment(task, { [field]: value });
+  }
+
+  getModelsForAssignment(task: any) {
+      const assignment = this.getAssignment(task);
+      const provider = this.settings.settings().providers.find(p => p.id === assignment.providerId);
+      return provider ? provider.models : [];
+  }
+  
+  getTaskLabel(task: string) {
+      const labels: any = {ocr: '图片识别 (OCR)', reasoning: '深度推理 & 解析', notes: '笔记润色'};
+      return labels[task] || task;
   }
 
   addSubject(name: string) {

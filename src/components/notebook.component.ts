@@ -226,10 +226,18 @@ interface FileNode {
           <div [class.hidden]="!rightSidebarOpen()" class="bg-[#111827] flex flex-col shrink-0" [style.width.px]="outlineWidth()">
              <div class="flex-1 overflow-y-auto p-4 custom-scrollbar">
                 
-                <!-- Time Info (Moved here) -->
+                <!-- Time Info -->
                 <div class="mb-6 p-3 bg-gray-800/30 rounded-lg text-[10px] text-gray-500 font-mono space-y-1 border border-gray-800">
                     <div class="flex justify-between"><span>Created:</span> <span class="text-gray-400">{{formatDate(selectedNote()!.createdAt)}}</span></div>
                     <div class="flex justify-between"><span>Updated:</span> <span class="text-gray-400">{{formatTime(selectedNote()!.updatedAt)}}</span></div>
+                </div>
+                
+                <!-- Danger Zone -->
+                <div class="mb-6">
+                    <button (click)="deleteCurrentNote()" class="w-full py-2 bg-red-900/10 border border-red-900/30 text-red-400 hover:bg-red-900/20 rounded text-xs transition-colors flex items-center justify-center gap-2">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                        删除此笔记
+                    </button>
                 </div>
 
                 <!-- Outline Section -->
@@ -361,7 +369,7 @@ interface FileNode {
         @for(node of nodes; track node.id) {
             <div [class.hidden]="node.type === 'note' && searchQuery() && !node.hasMatch">
                 <!-- Node Row -->
-                <div class="flex items-center group/node text-xs cursor-pointer select-none transition-colors"
+                <div class="flex items-center group/node text-xs cursor-pointer select-none transition-colors relative"
                      [class.bg-indigo-900_30]="selectedNoteId() === node.id"
                      [class.text-indigo-400]="selectedNoteId() === node.id"
                      [class.text-gray-400]="selectedNoteId() !== node.id"
@@ -403,6 +411,13 @@ interface FileNode {
                              </div>
                          }
                      </div>
+                     
+                     <!-- Delete Button (Hover) -->
+                     @if(node.type === 'folder') {
+                        <button (click)="$event.stopPropagation(); deleteFolder(node.path)" class="opacity-0 group-hover/node:opacity-100 text-gray-600 hover:text-red-400 p-1 mr-1" title="删除文件夹">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                        </button>
+                     }
                 </div>
 
                 <!-- Children -->
@@ -595,30 +610,31 @@ export class NotebookComponent {
      const raw = this.currentContent();
      if (!raw) return '';
      
+     // 1. Identify Refs and replace with a unique token that WON'T be messed up by marked.
+     // We use a GUID-like token.
      const refMap = new Map<string, string>();
      
-     // 1. Identify Refs and Generate Card HTML (with internal rendering)
      let processed = String(raw).replace(/::ref\[([a-zA-Z0-9-]+)\]::/g, (match, id) => {
-         const token = `__REF_START_${id}_REF_END__`;
+         const token = `__REF_PLACEHOLDER_${id}__`;
          const mistake = this.store.mistakes().find(m => m.id === id);
+         
          let html = '';
          if (!mistake) {
              html = `<div class="my-4 p-4 border border-red-900/50 bg-red-900/10 rounded-lg text-xs text-red-400">[引用丢失: ${id}]</div>`;
          } else {
-             // Render the internal content of the card!
+             // Mimic Blockquote style card
              const qHtml = this.renderMarkdownToHtmlString(mistake.questionText);
              const ansHtml = this.renderMarkdownToHtmlString(mistake.correctAnswer);
              
              html = `
-            <div class="my-4 p-4 border border-indigo-500/30 bg-indigo-900/10 rounded-lg not-prose hover:bg-indigo-900/20 transition-colors">
-                <div class="flex items-center gap-2 mb-2">
-                    <span class="text-[10px] bg-indigo-500 text-white px-1.5 py-0.5 rounded font-bold">引用题目</span>
-                    <span class="text-xs text-indigo-300">${this.escapeHtml(mistake.subject)}</span>
+            <blockquote class="not-italic border-l-4 border-indigo-500 bg-indigo-900/10 p-4 my-4 rounded-r-lg not-prose">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-xs font-bold text-indigo-400 uppercase tracking-wide">引用: ${this.escapeHtml(mistake.subject)}</span>
+                    <button class="text-[10px] text-gray-500 hover:text-white" onclick="alert('TODO: Jump to library')">查看详情</button>
                 </div>
-                <!-- Use Rendered HTML here -->
                 <div class="text-sm text-gray-200 font-serif mb-3 whitespace-normal prose prose-invert prose-sm max-w-none">${qHtml}</div>
                 <div class="text-xs text-green-400 font-bold bg-green-900/20 p-2 rounded border border-green-900/30">Ans: ${ansHtml}</div>
-            </div>`;
+            </blockquote>`;
          }
          refMap.set(token, html);
          return token;
@@ -627,47 +643,17 @@ export class NotebookComponent {
      // 2. Render Main Content using robust pipeline
      let finalHtml = this.renderMarkdownToHtmlString(processed);
 
-     // 3. Restore Ref Cards
+     // 3. Restore Ref Cards. We must be careful because marked might wrap our token in <p>
      refMap.forEach((value, key) => {
-        // marked might wrap the token in <p> if it was on its own line.
-        // We replace both the wrapped and unwrapped versions.
-        finalHtml = finalHtml.replace(new RegExp(`<p>\\s*${key}\\s*</p>`, 'g'), value);
-        finalHtml = finalHtml.replace(key, value);
+        // Regex to match the token, optionally wrapped in <p> tags with whitespace
+        const regex = new RegExp(`(<p>\\s*)?${key}(\\s*<\\/p>)?`, 'g');
+        finalHtml = finalHtml.replace(regex, value);
      });
      
      return this.sanitizer.bypassSecurityTrustHtml(finalHtml);
   });
 
-  // --- Sync Scroll ---
-  onEditorScroll(event: Event) {
-      if (this.viewMode() !== 'split' || this.isSyncingPreview) return;
-      const editor = event.target as HTMLElement;
-      const preview = document.getElementById('preview-container');
-      if (preview && editor.scrollHeight > editor.clientHeight) {
-          this.isSyncingEditor = true;
-          const percentage = editor.scrollTop / (editor.scrollHeight - editor.clientHeight);
-          if (preview.scrollHeight > preview.clientHeight) {
-            preview.scrollTop = percentage * (preview.scrollHeight - preview.clientHeight);
-          }
-          setTimeout(() => this.isSyncingEditor = false, 50);
-      }
-  }
-
-  onPreviewScroll(event: Event) {
-      if (this.viewMode() !== 'split' || this.isSyncingEditor) return;
-      const preview = event.target as HTMLElement;
-      const editor = this.editorRef?.nativeElement;
-      if (editor && preview.scrollHeight > preview.clientHeight) {
-          this.isSyncingPreview = true;
-          const percentage = preview.scrollTop / (preview.scrollHeight - preview.clientHeight);
-          if (editor.scrollHeight > editor.clientHeight) {
-            editor.scrollTop = percentage * (editor.scrollHeight - editor.clientHeight);
-          }
-          setTimeout(() => this.isSyncingPreview = false, 50);
-      }
-  }
-
-  // --- Tree Logic ---
+  // --- Tree Logic (Rewritten) ---
   
   expandedPaths = new Set<string>();
 
@@ -706,15 +692,18 @@ export class NotebookComponent {
         return newNode.children;
     };
 
-    // 1. Create structure from explicit folders
-    explicitFolders.forEach(path => {
+    // 1. First, ensure all explicit folders exist in the tree skeleton
+    // Sort explicit folders so we create parents before children naturally, though recursive logic handles it
+    [...explicitFolders].sort().forEach(path => {
         if(path) getOrCreateFolder(path.split('/').filter(p => p));
     });
 
-    // 2. Add notes (and create implicit folders if missing)
+    // 2. Add notes into the skeleton
     notes.forEach(note => {
         const folder = note.folder || '未分类';
         const parts = folder.split('/').filter(p => p);
+        
+        // Ensure folder exists (it should if store logic is correct, but safe fallback)
         const children = getOrCreateFolder(parts);
         
         children.push({
@@ -728,13 +717,14 @@ export class NotebookComponent {
             expanded: false
         });
         
-        // Sort notes
+        // Sort children: Folders first, then Notes by time
         children.sort((a, b) => {
             if (a.type !== b.type) return a.type === 'folder' ? -1 : 1;
-            if (this.sortOrder() === 'title') {
-                return (a.name || '').localeCompare(b.name || '');
+            if (a.type === 'note' && b.type === 'note') {
+                if (this.sortOrder() === 'title') return (a.name || '').localeCompare(b.name || '');
+                return (b.data?.updatedAt || 0) - (a.data?.updatedAt || 0);
             }
-            return (b.data?.updatedAt || 0) - (a.data?.updatedAt || 0);
+            return a.name.localeCompare(b.name);
         });
     });
 
@@ -777,31 +767,6 @@ export class NotebookComponent {
   toggleLeftSidebar() { this.leftSidebarOpen.update(v => !v); }
   toggleRightSidebar() { this.rightSidebarOpen.update(v => !v); }
 
-  // --- Drag and Drop ---
-  
-  onDragStart(e: DragEvent, node: FileNode) {
-     if (e.dataTransfer) {
-        e.dataTransfer.setData('application/json', JSON.stringify({ noteId: node.id }));
-        e.dataTransfer.effectAllowed = 'move';
-     }
-  }
-
-  onDragOver(e: DragEvent) {
-     e.preventDefault(); // Allow dropping
-     e.dataTransfer!.dropEffect = 'move';
-  }
-
-  onDrop(e: DragEvent, targetNode: FileNode) {
-     e.preventDefault();
-     const data = e.dataTransfer?.getData('application/json');
-     if (!data || targetNode.type !== 'folder') return;
-     
-     const { noteId } = JSON.parse(data);
-     if (noteId) {
-         this.store.updateNote(noteId, { folder: targetNode.path });
-     }
-  }
-
   // --- Operations ---
 
   selectNote(note: any) {
@@ -829,12 +794,25 @@ export class NotebookComponent {
   createNewFolder() {
       const parent = this.currentFolder() || '';
       const suggestion = parent ? `${parent}/新建文件夹` : '新建文件夹';
-      
       const folderName = prompt("请输入文件夹路径:", suggestion);
       
       if (folderName) {
           this.store.ensureFolderExists(folderName);
-          // Just force a refresh or wait for signal reaction, no note creation needed
+      }
+  }
+  
+  deleteFolder(path: string) {
+      this.store.deleteFolder(path);
+      // If current note was in that folder, deselect
+      if (this.currentFolder().startsWith(path)) {
+          this.selectedNoteId.set(null);
+      }
+  }
+
+  deleteCurrentNote() {
+      if (this.selectedNoteId()) {
+          this.store.deleteNote(this.selectedNoteId()!);
+          this.selectedNoteId.set(null);
       }
   }
 
@@ -937,6 +915,27 @@ export class NotebookComponent {
   }
 
   // --- Toolbar & Editor Logic ---
+  
+  // Drag and Drop
+  onDragStart(e: DragEvent, node: FileNode) {
+     if (e.dataTransfer) {
+        e.dataTransfer.setData('application/json', JSON.stringify({ noteId: node.id }));
+        e.dataTransfer.effectAllowed = 'move';
+     }
+  }
+  onDragOver(e: DragEvent) {
+     e.preventDefault();
+     e.dataTransfer!.dropEffect = 'move';
+  }
+  onDrop(e: DragEvent, targetNode: FileNode) {
+     e.preventDefault();
+     const data = e.dataTransfer?.getData('application/json');
+     if (!data || targetNode.type !== 'folder') return;
+     const { noteId } = JSON.parse(data);
+     if (noteId) {
+         this.store.updateNote(noteId, { folder: targetNode.path });
+     }
+  }
 
   insertText(prefix: string, suffix: string = '') {
       const textarea = this.editorRef.nativeElement;
@@ -980,7 +979,6 @@ export class NotebookComponent {
   }
 
   insertReference(type: 'text' | 'link', mistake: any) {
-      // If adding link, just do it. If text, showing config handled by template now.
       if (type === 'link') {
           this.insertText(`\n::ref[${mistake.id}]::\n`);
           this.showReferenceModal.set(false);
@@ -1028,7 +1026,6 @@ export class NotebookComponent {
   }
 
   // --- Resizing Logic ---
-
   startResize(type: 'sidebar' | 'editor' | 'outline', e: MouseEvent) {
       e.preventDefault();
       this.resizingState = {
@@ -1057,6 +1054,35 @@ export class NotebookComponent {
              const newPercent = Math.max(20, Math.min(80, this.resizingState.startWidth + deltaPercent));
              this.editorWidthPercent.set(newPercent);
           }
+      }
+  }
+  
+  // Same scroll sync and format date helpers as before...
+  onEditorScroll(event: Event) {
+      if (this.viewMode() !== 'split' || this.isSyncingPreview) return;
+      const editor = event.target as HTMLElement;
+      const preview = document.getElementById('preview-container');
+      if (preview && editor.scrollHeight > editor.clientHeight) {
+          this.isSyncingEditor = true;
+          const percentage = editor.scrollTop / (editor.scrollHeight - editor.clientHeight);
+          if (preview.scrollHeight > preview.clientHeight) {
+            preview.scrollTop = percentage * (preview.scrollHeight - preview.clientHeight);
+          }
+          setTimeout(() => this.isSyncingEditor = false, 50);
+      }
+  }
+
+  onPreviewScroll(event: Event) {
+      if (this.viewMode() !== 'split' || this.isSyncingEditor) return;
+      const preview = event.target as HTMLElement;
+      const editor = this.editorRef?.nativeElement;
+      if (editor && preview.scrollHeight > preview.clientHeight) {
+          this.isSyncingPreview = true;
+          const percentage = preview.scrollTop / (preview.scrollHeight - preview.clientHeight);
+          if (editor.scrollHeight > editor.clientHeight) {
+            editor.scrollTop = percentage * (editor.scrollHeight - editor.clientHeight);
+          }
+          setTimeout(() => this.isSyncingPreview = false, 50);
       }
   }
 
