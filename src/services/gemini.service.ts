@@ -13,8 +13,6 @@ export class GeminiService {
 
   private getClient(providerId: string) {
     const provider = this.settings.getProvider(providerId);
-    
-    // Fallback to process.env if provider key is empty (for default provider)
     const apiKey = provider?.apiKey || process.env['API_KEY'] || '';
     const baseUrl = provider?.baseUrl || undefined;
     
@@ -26,17 +24,14 @@ export class GeminiService {
     return new GoogleGenAI(options);
   }
 
-  // Helper to safely parse JSON from AI response, handling markdown blocks
   private cleanJson(text: string): any {
       try {
           return JSON.parse(text);
       } catch (e) {
-          // Attempt to strip ```json ... ``` markdown
           const match = text.match(/```json\s*([\s\S]*?)\s*```/);
           if (match && match[1]) {
               try { return JSON.parse(match[1]); } catch(e2) {}
           }
-          // Attempt to strip generic ``` ... ``` markdown
           const matchGeneric = text.match(/```\s*([\s\S]*?)\s*```/);
           if (matchGeneric && matchGeneric[1]) {
               try { return JSON.parse(matchGeneric[1]); } catch(e3) {}
@@ -46,7 +41,7 @@ export class GeminiService {
   }
 
   // 1. OCR Task
-  async recognizeQuestionFromImage(base64Image: string) {
+  async recognizeQuestionFromImage(base64Image: string, removeHandwriting: boolean = true) {
     const assignment = this.settings.settings().assignments.ocr;
     const ai = this.getClient(assignment.providerId);
     const model = assignment.modelId;
@@ -55,17 +50,25 @@ export class GeminiService {
     const schema = {
       type: Type.OBJECT,
       properties: {
-        questionText: { type: Type.STRING, description: "The transcribed text of the question (preserve original language)" },
+        questionText: { type: Type.STRING, description: "The clean transcribed text of the question (preserve original language, NO handwriting)" },
         subject: { type: Type.STRING, description: "Subject in Chinese (e.g. 数学, 物理)" },
         type: { type: Type.STRING, enum: ['choice', 'indeterminate_choice', 'fill', 'short'], description: "Question format" },
         options: { 
             type: Type.ARRAY, 
             items: { type: Type.STRING },
             description: "If choice question, list options (content only) here. Empty for other types." 
+        },
+        diagramSVG: { 
+            type: Type.STRING, 
+            description: "A clean, self-contained SVG string representing the scientific diagram/model in the image (geometry, circuit, forces, etc.). Remove all handwriting/scribbles. Use black lines, transparent fill. Start with <svg> tag. Leave empty if no diagram." 
         }
       },
       required: ["questionText", "subject", "type"]
     };
+
+    const userInstructions = removeHandwriting 
+        ? "Extract the question text. IMPORTANT: The image contains student handwriting (answers/marks). IGNORE all handwriting and transcribe only the printed question text. If a physical/math diagram exists, RECREATE it as SVG code in diagramSVG field."
+        : "Extract the question text and metadata from the image.";
 
     try {
       const response = await ai.models.generateContent({
@@ -73,7 +76,7 @@ export class GeminiService {
         contents: {
             parts: [
                 { inlineData: { mimeType: 'image/jpeg', data: base64Image } },
-                { text: "Extract the question text and metadata." }
+                { text: userInstructions }
             ]
         },
         config: {
@@ -91,30 +94,44 @@ export class GeminiService {
   }
 
   // 2. Reasoning Task
-  async solveAndAnalyze(question: string, wrongAnswer: string, subject: string, imageContext?: string) {
+  async solveAndAnalyze(question: string, wrongAnswer: string | undefined, subject: string, imageContext?: string) {
     const assignment = this.settings.settings().assignments.reasoning;
     const ai = this.getClient(assignment.providerId);
     const model = assignment.modelId;
     const systemPrompt = this.settings.settings().prompts.analysis;
     
-    const schema = {
-      type: Type.OBJECT,
-      properties: {
+    // Dynamic Schema: If wrongAnswer is provided, require diagnosis. If not, don't.
+    const properties: any = {
         correctAnswer: { type: Type.STRING, description: "The correct answer." },
         explanation: { type: Type.STRING, description: "Detailed step-by-step solution in Chinese. Use LaTeX for math." },
-        errorDiagnosis: { type: Type.STRING, description: "Why the student likely got it wrong (in Chinese)." },
         coreConcept: { type: Type.STRING, description: "The main academic concept tested (in Chinese)." },
         tags: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Relevant tags in Chinese" },
         difficultyRating: { type: Type.INTEGER, description: "1-5 scale" }
-      },
-      required: ["correctAnswer", "explanation", "errorDiagnosis", "coreConcept", "tags"]
     };
 
-    const userPrompt = `
+    const required = ["correctAnswer", "explanation", "coreConcept", "tags"];
+
+    if (wrongAnswer) {
+        properties.errorDiagnosis = { type: Type.STRING, description: "Why the student likely got it wrong (in Chinese)." };
+        required.push("errorDiagnosis");
+    }
+
+    const schema = {
+      type: Type.OBJECT,
+      properties,
+      required
+    };
+
+    let userPrompt = `
       Subject: ${subject}
       Question: ${question}
-      Student's Wrong Answer: ${wrongAnswer}
     `;
+
+    if (wrongAnswer) {
+        userPrompt += `\nStudent's Wrong Answer: ${wrongAnswer}`;
+    } else {
+        userPrompt += `\n(No student answer provided. Just solve it.)`;
+    }
 
     const parts: any[] = [{ text: userPrompt }];
     if (imageContext) {

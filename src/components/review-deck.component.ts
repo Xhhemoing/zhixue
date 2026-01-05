@@ -1,7 +1,7 @@
 
 import { Component, inject, computed, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms'; // Added FormsModule
+import { FormsModule } from '@angular/forms'; 
 import { DomSanitizer } from '@angular/platform-browser';
 import { StudyStoreService, Mistake } from '../services/study-store.service';
 
@@ -11,7 +11,7 @@ declare const katex: any;
 @Component({
   selector: 'app-review-deck',
   standalone: true,
-  imports: [CommonModule, FormsModule], // Added FormsModule
+  imports: [CommonModule, FormsModule], 
   template: `
     <div class="h-full flex flex-col p-4 md:p-8 overflow-hidden">
       <header class="mb-4 md:mb-8 flex justify-between items-end shrink-0">
@@ -38,8 +38,15 @@ declare const katex: any;
                      <span class="text-xs px-2 py-0.5 rounded bg-gray-800 text-gray-400">{{currentCard()!.subject}}</span>
                   </div>
                   
-                  @if (currentCard()!.questionImage) {
-                    <div class="mb-6 rounded-lg overflow-hidden border border-gray-700 max-h-48 md:max-h-60 flex justify-center bg-gray-900">
+                  <!-- Diagram/Image Visibility Logic -->
+                  @if (currentCard()!.diagramSVG && currentCard()!.showRestoredImage) {
+                     <div class="mb-6 rounded-lg overflow-hidden border border-indigo-500/30 bg-[#fff]/95 p-4 flex justify-center shadow-lg shadow-indigo-900/10">
+                        <div class="max-h-60 w-full flex items-center justify-center [&>svg]:max-h-60 [&>svg]:w-auto text-black" [innerHTML]="renderSafeHtml(currentCard()!.diagramSVG!)"></div>
+                     </div>
+                  } 
+                  
+                  @if (currentCard()!.questionImage && currentCard()!.showOriginalImage) {
+                    <div class="mb-6 rounded-lg overflow-hidden border border-gray-700 max-h-48 md:max-h-60 flex justify-center bg-black">
                       <img [src]="currentCard()!.questionImage" class="h-full object-contain">
                     </div>
                   }
@@ -54,14 +61,15 @@ declare const katex: any;
                                 [class.border-green-500]="isRevealed() && isCorrectOption(['A','B','C','D'][$index])"
                                 [class.bg-green-900_20]="isRevealed() && isCorrectOption(['A','B','C','D'][$index])"
                                 [class.border-gray-700]="!isRevealed() || !isCorrectOption(['A','B','C','D'][$index])">
-                                <span class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold"
+                                <span class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
                                       [class.bg-green-500]="isRevealed() && isCorrectOption(['A','B','C','D'][$index])"
                                       [class.text-white]="isRevealed() && isCorrectOption(['A','B','C','D'][$index])"
                                       [class.bg-gray-700]="!isRevealed() || !isCorrectOption(['A','B','C','D'][$index])"
                                       [class.text-gray-300]="!isRevealed() || !isCorrectOption(['A','B','C','D'][$index])">
                                    {{['A','B','C','D'][$index]}}
                                 </span>
-                                <span class="text-gray-300">{{opt}}</span>
+                                <!-- Markdown support in options -->
+                                <span class="text-gray-300 markdown-inline" [innerHTML]="renderMarkdown(opt)"></span>
                            </div>
                         }
                      </div>
@@ -74,10 +82,16 @@ declare const katex: any;
                      <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <div>
                           <span class="text-xs font-bold text-red-400 uppercase mb-2 block">你的错解</span>
-                          <p class="text-gray-400 text-sm mb-4 font-mono bg-gray-900/50 p-2 rounded">{{currentCard()!.wrongAnswer}}</p>
-                          <p class="text-gray-300 text-sm italic border-l-2 border-red-500/30 pl-3">
-                             "{{currentCard()!.aiDiagnosis}}"
-                          </p>
+                          @if (currentCard()!.wrongAnswer) {
+                            <p class="text-gray-400 text-sm mb-4 font-mono bg-gray-900/50 p-2 rounded">{{currentCard()!.wrongAnswer}}</p>
+                            @if (currentCard()!.aiDiagnosis) {
+                                <p class="text-gray-300 text-sm italic border-l-2 border-red-500/30 pl-3">
+                                "{{currentCard()!.aiDiagnosis}}"
+                                </p>
+                            }
+                          } @else {
+                             <p class="text-gray-500 text-sm italic">未记录错解</p>
+                          }
                         </div>
                         <div>
                           <span class="text-xs font-bold text-green-400 uppercase mb-2 block">正确答案</span>
@@ -146,7 +160,7 @@ declare const katex: any;
       } @else {
         <div class="flex-1 flex flex-col items-center justify-center text-center opacity-60">
            <h2 class="text-2xl font-bold text-gray-300">今日任务完成!</h2>
-           <button (click)="store.setTab('collect')" class="mt-8 text-indigo-400 underline">去录入新题</button>
+           <button (click)="store.setTab('dashboard')" class="mt-8 text-indigo-400 underline">返回首页</button>
         </div>
       }
     </div>
@@ -156,6 +170,7 @@ declare const katex: any;
     .animate-fade-in-up { animation: fadeInUp 0.4s ease-out; }
     @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
     @keyframes fadeInUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    ::ng-deep .markdown-inline p { display: inline !important; margin: 0 !important; }
   `]
 })
 export class ReviewDeckComponent {
@@ -199,18 +214,20 @@ export class ReviewDeckComponent {
     return correct.includes(opt);
   }
 
+  renderSafeHtml(html: string) {
+      return this.sanitizer.bypassSecurityTrustHtml(html);
+  }
+
   renderMarkdown(text: string | undefined) {
     if (!text) return this.sanitizer.bypassSecurityTrustHtml('');
     
     const mathBlocks: {tex: string, display: boolean}[] = [];
     
-    // Protect $$...$$ blocks first
     let protectedText = String(text).replace(/\$\$([\s\S]*?)\$\$/g, (match, content) => {
         mathBlocks.push({ tex: content, display: true });
         return `@@MATH_${mathBlocks.length - 1}@@`;
     });
 
-    // Protect $...$ inline blocks
     protectedText = protectedText.replace(/\$([^$]+?)\$/g, (match, content) => {
         mathBlocks.push({ tex: content, display: false });
         return `@@MATH_${mathBlocks.length - 1}@@`;
@@ -220,7 +237,6 @@ export class ReviewDeckComponent {
     try {
         html = marked.parse(protectedText);
 
-        // Restore and render KaTeX
         html = html.replace(/<p>@@MATH_(\d+)@@<\/p>/g, (match, indexStr) => {
             const index = parseInt(indexStr, 10);
             const block = mathBlocks[index];

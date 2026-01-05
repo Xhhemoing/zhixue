@@ -3,7 +3,7 @@ import { Injectable, signal, computed, effect } from '@angular/core';
 
 export interface MistakeAnalysis {
   coreConcept: string;
-  errorDiagnosis: string;
+  errorDiagnosis?: string; // Optional now
   correctMethod: string;
   tags: string[];
   difficultyRating: number;
@@ -16,16 +16,22 @@ export interface Mistake {
   tags: string[];
   
   questionText: string;
-  questionImage?: string; // Base64
+  questionImage?: string; // Base64 (Original or Cropped)
+  diagramSVG?: string; // AI Restored Vector Diagram
+  
+  // Visibility Flags
+  showOriginalImage: boolean;
+  showRestoredImage: boolean;
+
   options?: string[]; // For MCQ choices [A, B, C, D]
   
-  wrongAnswer: string;
+  wrongAnswer?: string; // Optional
   correctAnswer: string;
   explanation: string;
-  aiDiagnosis: string;
+  aiDiagnosis?: string; // Optional
   
   analysis: MistakeAnalysis;
-  userNotes: string; // Reflection specific to this question
+  userNotes: string; 
   
   addedAt: number;
   updatedAt?: number;
@@ -39,14 +45,14 @@ export interface NoteVersion {
     timestamp: number;
     content: string;
     title: string;
-    name?: string; // User defined name for the snapshot
+    name?: string; 
 }
 
 export interface Note {
     id: string;
     folder: string;
     title: string;
-    content: string; // Markdown
+    content: string; 
     tags: string[];
     createdAt: number;
     updatedAt: number;
@@ -59,8 +65,8 @@ export interface Note {
 export class StudyStoreService {
   readonly mistakes = signal<Mistake[]>([]);
   readonly notes = signal<Note[]>([]);
-  readonly folders = signal<string[]>([]); // List of folder paths (e.g. "Math/Algebra")
-  readonly activeTab = signal<string>('collect'); 
+  readonly folders = signal<string[]>([]); 
+  readonly activeTab = signal<string>('dashboard'); // Default to Dashboard
   
   // Edit State
   readonly editingMistake = signal<Mistake | null>(null);
@@ -78,7 +84,6 @@ export class StudyStoreService {
     this.loadFromStorage();
     this.isLoaded = true;
     
-    // Save effects - Only run if loaded to prevent overwriting with initial empty state
     effect(() => {
       if (!this.isLoaded) return;
       localStorage.setItem('nexus_mistakes', JSON.stringify(this.mistakes()));
@@ -111,6 +116,13 @@ export class StudyStoreService {
     if (storedFolders) {
        try { loadedFolders = JSON.parse(storedFolders); } catch (e) { console.error(e); }
     }
+
+    // Migration logic for old data without visibility flags
+    loadedMistakes = loadedMistakes.map(m => ({
+        ...m,
+        showOriginalImage: m.showOriginalImage ?? true,
+        showRestoredImage: m.showRestoredImage ?? true
+    }));
 
     // MIGRATION: Check if mistakes contain old 'note' types and move them
     const notesToMigrate = loadedMistakes.filter(m => m.type === 'note');
@@ -171,7 +183,6 @@ export class StudyStoreService {
 
       if (performance === 'custom' && customDate) {
           nextTime = customDate;
-          // Don't increment count for manual adjustments usually, or maybe do? let's keep it neutral
       } else {
           const baseDelay = 1000 * 60 * 60 * 24; // 1 day
           let multiplier = m.reviewCount + 1;
@@ -217,10 +228,7 @@ export class StudyStoreService {
   deleteFolder(path: string) {
       if (!confirm(`确定要删除文件夹 "${path}" 及其包含的所有内容吗?`)) return;
       
-      // 1. Remove notes inside this folder (and subfolders)
       this.notes.update(curr => curr.filter(n => !n.folder.startsWith(path)));
-      
-      // 2. Remove folder entries
       this.folders.update(curr => curr.filter(f => !f.startsWith(path)));
   }
   
@@ -244,7 +252,7 @@ export class StudyStoreService {
       }
       
       this.notes.update(curr => [newNote, ...curr]);
-      return newNote.id; // Return ID for selection
+      return newNote.id; 
   }
 
   updateNote(id: string, updates: Partial<Note>, saveVersion = false, versionName?: string) {
@@ -264,7 +272,7 @@ export class StudyStoreService {
                       title: n.title,
                       name: versionName || `快照 ${new Date().toLocaleTimeString()}`
                   };
-                  updatedNote.versions = [version, ...(n.versions || []).slice(0, 9)]; // Keep last 10 versions
+                  updatedNote.versions = [version, ...(n.versions || []).slice(0, 9)]; 
               }
               return updatedNote;
           }

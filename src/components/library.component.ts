@@ -107,7 +107,15 @@ declare const katex: any;
                         } @else {
                            <div class="w-full h-full flex items-center justify-center text-gray-700 font-serif text-4xl">?</div>
                         }
-                        <div class="absolute bottom-2 left-2 px-2 py-0.5 bg-black/60 rounded text-[10px] text-white backdrop-blur-sm shadow-sm">{{mistake.subject}}</div>
+                        
+                        @if(mistake.diagramSVG) {
+                           <div class="absolute bottom-2 right-2 px-1.5 py-0.5 bg-indigo-600/80 text-[9px] text-white rounded shadow-sm border border-indigo-400/30 flex items-center gap-1">
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19l7-7 3 3-7 7-3-3z"></path><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"></path><path d="M2 2l7.586 7.586"></path><circle cx="11" cy="11" r="2"></circle></svg>
+                                SVG
+                           </div>
+                        }
+
+                        <div class="absolute bottom-2 left-2 px-2 py-0.5 bg-black/60 text-[10px] text-white rounded backdrop-blur-sm shadow-sm">{{mistake.subject}}</div>
                      </div>
                      <div class="flex-1 p-3 flex flex-col">
                         <!-- Use innerHTML for markdown rendering in card summary -->
@@ -148,18 +156,33 @@ declare const katex: any;
                           <div class="mb-4">
                               <span class="text-xs font-bold text-gray-500 uppercase tracking-wide">题目 ({{selectedMistake()?.subject}})</span>
                           </div>
-                          @if (selectedMistake()?.questionImage) {
-                              <div class="mb-6 rounded-lg overflow-hidden border border-gray-700 bg-gray-950/30 flex justify-center">
+                          
+                          <!-- Render Restored SVG Diagram if available -->
+                          @if(selectedMistake()?.diagramSVG && selectedMistake()?.showRestoredImage) {
+                             <div class="mb-6 rounded-lg overflow-hidden border border-indigo-500/30 bg-[#fff]/95 p-6 flex justify-center shadow-xl shadow-indigo-900/10">
+                                <div class="max-h-64 w-full flex items-center justify-center [&>svg]:max-h-64 [&>svg]:w-auto text-black" [innerHTML]="renderSafeHtml(selectedMistake()?.diagramSVG!)"></div>
+                             </div>
+                             <div class="text-xs text-indigo-400 mb-6 text-center italic">↑ AI 复刻矢量图</div>
+                          } 
+                          
+                          @if (selectedMistake()?.questionImage && selectedMistake()?.showOriginalImage) {
+                              <div class="mb-6 rounded-lg overflow-hidden border border-gray-700 bg-black flex justify-center">
                                   <img [src]="selectedMistake()?.questionImage" class="max-h-80 w-auto object-contain">
                               </div>
                           }
+                          
                           <div class="text-lg text-gray-200 font-serif leading-relaxed whitespace-pre-wrap prose prose-invert max-w-none" [innerHTML]="renderMarkdown(selectedMistake()?.questionText)"></div>
                           
                           @if (selectedMistake()?.options && selectedMistake()?.options!.length > 0) {
                               <div class="mt-6 space-y-2">
                                   @for(opt of selectedMistake()?.options; track $index) {
-                                      <div class="p-3 border border-gray-700 rounded-lg text-sm text-gray-300 flex">
-                                          <span class="font-bold mr-2 text-gray-500 shrink-0">{{['A','B','C','D'][$index]}}.</span> 
+                                      <div class="p-3 border rounded-lg text-sm text-gray-300 flex"
+                                          [class.border-green-800]="isCorrectAnswer(['A','B','C','D'][$index])"
+                                          [class.bg-green-900_20]="isCorrectAnswer(['A','B','C','D'][$index])"
+                                          [class.border-gray-700]="!isCorrectAnswer(['A','B','C','D'][$index])">
+                                          <span class="font-bold mr-2 shrink-0" 
+                                               [class.text-green-400]="isCorrectAnswer(['A','B','C','D'][$index])"
+                                               [class.text-gray-500]="!isCorrectAnswer(['A','B','C','D'][$index])">{{['A','B','C','D'][$index]}}.</span> 
                                           <!-- Render Markdown for options -->
                                           <div class="markdown-inline" [innerHTML]="renderMarkdown(opt)"></div>
                                       </div>
@@ -172,7 +195,11 @@ declare const katex: any;
                           <div class="space-y-8">
                               <div>
                                   <span class="text-xs font-bold text-red-400 uppercase tracking-wide block mb-2">错解</span>
-                                  <div class="p-3 bg-red-900/10 border border-red-900/30 rounded text-gray-300 text-sm font-mono">{{selectedMistake()?.wrongAnswer}}</div>
+                                  @if (selectedMistake()?.wrongAnswer) {
+                                     <div class="p-3 bg-red-900/10 border border-red-900/30 rounded text-gray-300 text-sm font-mono">{{selectedMistake()?.wrongAnswer}}</div>
+                                  } @else {
+                                     <div class="text-gray-500 text-sm italic">无错解记录</div>
+                                  }
                               </div>
                               <div>
                                   <span class="text-xs font-bold text-green-400 uppercase tracking-wide block mb-2">正解 & 解析</span>
@@ -235,6 +262,11 @@ export class LibraryComponent {
      }).sort((a,b) => b.addedAt - a.addedAt);
   });
 
+  isCorrectAnswer(opt: string) {
+      if(!this.selectedMistake()) return false;
+      return this.selectedMistake()!.correctAnswer.toUpperCase().includes(opt);
+  }
+
   formatDate(ts: number) {
      return new Date(ts).toLocaleDateString();
   }
@@ -259,6 +291,10 @@ export class LibraryComponent {
         this.store.startEditing(this.selectedMistake()!);
         this.closeDetail();
     }
+  }
+
+  renderSafeHtml(html: string) {
+      return this.sanitizer.bypassSecurityTrustHtml(html);
   }
 
   renderMarkdown(text: string | undefined) {

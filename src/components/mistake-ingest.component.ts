@@ -1,9 +1,9 @@
 
-import { Component, inject, signal, computed, effect } from '@angular/core';
+import { Component, inject, signal, computed, effect, ViewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer } from '@angular/platform-browser';
-import { GeminiService } from '../services/gemini.service';
+import { GeminiService } from '../services/gemini.service.ts';
 import { StudyStoreService } from '../services/study-store.service';
 import { SettingsService } from '../services/settings.service';
 
@@ -71,18 +71,69 @@ declare const katex: any;
             @if (step() === 1) {
                <div class="space-y-6 max-w-2xl mx-auto animate-fade-in pb-20 md:pb-0">
                   
-                  <!-- File Upload Box -->
-                  <div class="border-2 border-dashed border-gray-700 rounded-lg p-6 text-center hover:border-gray-500 transition-colors cursor-pointer relative group bg-gray-900/30" (click)="fileInput.click()">
-                       <input #fileInput type="file" accept="image/*" class="hidden" (change)="handleImageUpload($event)">
-                       @if (questionImage()) {
-                          <img [src]="questionImage()" class="max-h-48 mx-auto rounded shadow-lg object-contain">
-                          <button class="mt-2 text-xs text-indigo-400 underline hover:text-indigo-300" (click)="$event.stopPropagation(); fileInput.click()">更换图片</button>
-                       } @else {
+                  <!-- Image & Diagram Area -->
+                  @if (questionImage()) {
+                     <div class="space-y-4">
+                        <!-- Original Image -->
+                        <div class="relative group border border-gray-700 rounded-lg overflow-hidden bg-gray-900 text-center">
+                            <img [src]="questionImage()" class="max-h-60 mx-auto object-contain">
+                            
+                            <!-- Image Actions -->
+                            <div class="absolute top-2 right-2 flex gap-2">
+                                <button class="bg-indigo-600/90 hover:bg-indigo-500 p-1.5 rounded text-white shadow-lg text-xs font-bold" (click)="openCropper()">
+                                    裁剪
+                                </button>
+                                <button class="bg-gray-800/80 p-1.5 rounded text-gray-300 hover:text-white text-xs" (click)="fileInput.click()">
+                                    更换
+                                </button>
+                            </div>
+                            
+                            <!-- Visibility Toggle Overlay -->
+                            <div class="absolute bottom-0 left-0 right-0 bg-black/60 p-2 flex items-center justify-between">
+                                <span class="text-[10px] text-gray-400 px-1 rounded">原始图片</span>
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <span class="text-[10px] text-gray-300">Review时显示</span>
+                                    <input type="checkbox" [(ngModel)]="showOriginalImage" class="rounded bg-gray-700 border-gray-600 text-indigo-500 w-3 h-3">
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <!-- AI Restored Diagram SVG -->
+                        @if (diagramSVG()) {
+                             <div class="relative group border border-indigo-900/50 rounded-lg overflow-hidden bg-[#fff]/90 text-center">
+                                 <div class="w-full h-48 flex items-center justify-center [&>svg]:w-full [&>svg]:h-full [&>svg]:max-h-full text-black p-4" [innerHTML]="renderSafeHtml(diagramSVG())"></div>
+                                 <div class="absolute bottom-0 left-0 right-0 bg-indigo-900/90 p-2 flex items-center justify-between">
+                                     <span class="text-[10px] text-white">AI 复刻原图 (SVG)</span>
+                                     <label class="flex items-center gap-2 cursor-pointer">
+                                        <span class="text-[10px] text-gray-300">Review时显示</span>
+                                        <input type="checkbox" [(ngModel)]="showRestoredImage" class="rounded bg-gray-700 border-gray-600 text-indigo-500 w-3 h-3">
+                                     </label>
+                                 </div>
+                                 <button class="absolute top-2 right-2 text-red-500 hover:text-red-700 p-1" (click)="diagramSVG.set('')" title="删除复刻图">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                                 </button>
+                             </div>
+                        }
+                     </div>
+                  } @else {
+                     <div class="border-2 border-dashed border-gray-700 rounded-lg p-6 text-center hover:border-gray-500 transition-colors cursor-pointer relative group bg-gray-900/30" (click)="fileInput.click()">
                           <div class="text-gray-500 group-hover:text-indigo-400 transition-colors">
                              <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" class="mx-auto mb-2 opacity-50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
                              点击上传 / 拖拽 / 粘贴图片
                           </div>
-                       }
+                     </div>
+                  }
+                  <input #fileInput type="file" accept="image/*" class="hidden" (change)="handleImageUpload($event)">
+                  
+                  <!-- Processing Options -->
+                  <div class="flex items-center gap-4 bg-gray-900/50 p-2 rounded border border-gray-800">
+                      <label class="flex items-center gap-2 cursor-pointer select-none group">
+                          <div class="relative">
+                             <input type="checkbox" [(ngModel)]="removeHandwriting" class="sr-only peer">
+                             <div class="w-9 h-5 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+                          </div>
+                          <span class="text-xs text-gray-400 font-medium group-hover:text-gray-300">智能复刻 (去除手写 + 重绘图表)</span>
+                      </label>
                   </div>
 
                   <div class="grid grid-cols-2 gap-4">
@@ -111,13 +162,13 @@ declare const katex: any;
 
                   <div>
                      <label class="block text-xs font-bold text-gray-500 mb-1 uppercase tracking-wide">题目内容</label>
-                     <textarea [(ngModel)]="questionText" rows="5" class="w-full bg-[#18181b] hover:bg-[#202025] border border-gray-700 rounded p-3 text-gray-200 outline-none focus:border-indigo-500 transition-colors font-mono text-sm leading-relaxed" placeholder="支持 Markdown 和 LaTeX 公式..."></textarea>
+                     <textarea [(ngModel)]="questionText" rows="5" class="w-full bg-[#18181b] hover:bg-[#202025] border border-gray-700 rounded p-3 text-gray-200 outline-none focus:border-indigo-500 transition-colors font-mono text-sm leading-relaxed" placeholder="AI 识别后内容将显示在此，支持手动修改..."></textarea>
                   </div>
 
                   <!-- MCQ Options -->
                   @if (questionType() === 'choice' || questionType() === 'indeterminate_choice') {
                     <div class="space-y-2 p-4 bg-[#18181b] rounded-lg border border-gray-700">
-                       <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">选项内容</label>
+                       <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">选项内容 (支持 Markdown/LaTeX)</label>
                        @for (opt of ['A','B','C','D']; track $index) {
                           <div class="flex items-center gap-2">
                              <span class="text-xs font-mono text-gray-500 w-4 font-bold">{{opt}}.</span>
@@ -128,8 +179,8 @@ declare const katex: any;
                   }
                   
                   <div>
-                      <label class="block text-xs font-bold text-red-400 mb-1 uppercase tracking-wide">我的错解</label>
-                      <input [(ngModel)]="wrongAnswer" placeholder="例如: A, 或具体的数值" class="w-full bg-[#18181b] hover:bg-[#202025] border border-red-900/30 focus:border-red-500/50 rounded p-3 text-gray-200 outline-none font-mono text-sm transition-colors">
+                      <label class="block text-xs font-bold text-red-400 mb-1 uppercase tracking-wide">我的错解 (可选)</label>
+                      <input [(ngModel)]="wrongAnswer" placeholder="例如: A, 或具体的数值 (留空则不进行错误诊断)" class="w-full bg-[#18181b] hover:bg-[#202025] border border-red-900/30 focus:border-red-500/50 rounded p-3 text-gray-200 outline-none font-mono text-sm transition-colors">
                   </div>
 
                   <div class="flex justify-end pt-4">
@@ -152,10 +203,12 @@ declare const katex: any;
                     <label class="block text-xs font-bold text-gray-500 mb-1 uppercase tracking-wide">详细解析</label>
                     <textarea [(ngModel)]="analysisData.explanation" rows="8" class="w-full bg-[#18181b] border border-gray-700 rounded p-3 text-gray-200 outline-none focus:border-indigo-500 leading-relaxed text-sm transition-colors"></textarea>
                   </div>
-                  <div>
-                    <label class="block text-xs font-bold text-red-400 mb-1 uppercase tracking-wide">错误诊断</label>
-                    <textarea [(ngModel)]="analysisData.errorDiagnosis" rows="3" class="w-full bg-[#18181b] border border-red-900/30 rounded p-3 text-gray-200 outline-none focus:border-red-500/50 text-sm transition-colors"></textarea>
-                  </div>
+                  @if (wrongAnswer()) {
+                    <div>
+                        <label class="block text-xs font-bold text-red-400 mb-1 uppercase tracking-wide">错误诊断</label>
+                        <textarea [(ngModel)]="analysisData.errorDiagnosis" rows="3" class="w-full bg-[#18181b] border border-red-900/30 rounded p-3 text-gray-200 outline-none focus:border-red-500/50 text-sm transition-colors"></textarea>
+                    </div>
+                  }
                   <div class="flex justify-end pt-4">
                      <button (click)="step.set(3)" class="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2 rounded-lg text-sm font-bold transition-colors">下一步</button>
                   </div>
@@ -196,12 +249,27 @@ declare const katex: any;
            
            <div class="flex-1 overflow-y-auto p-4 md:p-8 prose prose-invert prose-sm max-w-none custom-scrollbar bg-gray-900 h-full">
               @if (step() === 1) {
+                 @if (diagramSVG() && showRestoredImage) {
+                    <div class="mb-4 p-4 bg-white/90 rounded-lg flex justify-center [&>svg]:w-full [&>svg]:max-w-xs [&>svg]:h-auto text-black border-2 border-indigo-500/50 shadow-lg shadow-indigo-900/20" [innerHTML]="renderSafeHtml(diagramSVG())"></div>
+                 }
+                 @if (questionImage() && showOriginalImage) {
+                     <div class="mb-4 text-center">
+                        <img [src]="questionImage()" class="max-h-48 mx-auto object-contain border border-gray-700 rounded bg-black">
+                     </div>
+                 }
                  <div class="text-xs text-gray-500 mb-2 font-bold uppercase">题目</div>
                  <div [innerHTML]="renderMarkdown(questionText())"></div>
                  @if (hasMcqOptions) {
-                    <ul class="list-none pl-0 space-y-1 mt-4">
+                    <ul class="list-none pl-0 space-y-2 mt-4">
                        @for(opt of mcqOptions; track $index) {
-                          @if(opt) { <li class="text-gray-400 flex items-start gap-2"><strong class="text-gray-500 shrink-0">{{['A','B','C','D'][$index]}}.</strong> <span [innerHTML]="renderMarkdown(opt)"></span></li> }
+                          @if(opt) { 
+                              <li class="flex items-start gap-2 p-2 rounded border border-transparent transition-colors"
+                                  [class.border-green-800]="isCorrectAnswer(['A','B','C','D'][$index])"
+                                  [class.bg-green-900_20]="isCorrectAnswer(['A','B','C','D'][$index])">
+                                  <strong class="shrink-0 font-bold" [class.text-green-400]="isCorrectAnswer(['A','B','C','D'][$index])" [class.text-gray-500]="!isCorrectAnswer(['A','B','C','D'][$index])">{{['A','B','C','D'][$index]}}.</strong> 
+                                  <span class="text-gray-300 markdown-inline" [innerHTML]="renderMarkdown(opt)"></span>
+                              </li> 
+                           }
                        }
                     </ul>
                  }
@@ -224,8 +292,39 @@ declare const katex: any;
         </div>
 
       </div>
+
+      <!-- Cropper Modal -->
+      @if (isCropping()) {
+          <div class="fixed inset-0 z-50 bg-black/90 flex flex-col items-center justify-center p-4">
+              <div class="relative w-full max-w-4xl h-[80vh] bg-gray-900 border border-gray-700 rounded-lg overflow-hidden flex items-center justify-center select-none"
+                   (mousedown)="startCrop($event)" (mousemove)="doCrop($event)" (mouseup)="endCrop()">
+                   
+                   <!-- Image to Crop -->
+                   <img #cropImg [src]="cropSrc()" class="max-h-full max-w-full object-contain pointer-events-none" (load)="onCropImgLoad()">
+                   
+                   <!-- Crop Overlay -->
+                   @if (cropBox()) {
+                       <div class="absolute border-2 border-indigo-500 bg-indigo-500/20 pointer-events-none"
+                            [style.left.px]="cropBox()!.x" [style.top.px]="cropBox()!.y"
+                            [style.width.px]="cropBox()!.w" [style.height.px]="cropBox()!.h"></div>
+                   }
+                   
+                   <div class="absolute top-4 left-4 text-white text-xs bg-black/50 px-2 py-1 rounded pointer-events-none">
+                       拖拽鼠标选择区域
+                   </div>
+              </div>
+              <div class="flex gap-4 mt-4">
+                  <button (click)="applyCrop()" [disabled]="!cropBox()" class="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded font-bold disabled:opacity-50">确认裁剪</button>
+                  <button (click)="isCropping.set(false)" class="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded">取消</button>
+              </div>
+          </div>
+      }
     </div>
-  `
+  `,
+  styles: [`
+     /* Force inline display for markdown paragraphs in options */
+     ::ng-deep .markdown-inline p { display: inline !important; margin: 0 !important; }
+  `]
 })
 export class MistakeIngestComponent {
   gemini = inject(GeminiService);
@@ -247,10 +346,17 @@ export class MistakeIngestComponent {
 
   // Data
   questionImage = signal<string | null>(null);
+  diagramSVG = signal(''); 
+  removeHandwriting = signal(true);
+  
+  // Visibility Flags
+  showOriginalImage = true;
+  showRestoredImage = true;
+  
   subject = signal('');
-  questionType = signal<'choice' | 'indeterminate_choice' | 'fill' | 'short' | ''>(''); // Allow empty for AI detection
+  questionType = signal<'choice' | 'indeterminate_choice' | 'fill' | 'short' | ''>(''); 
   questionText = signal('');
-  mcqOptions = ['', '', '', '']; // A, B, C, D
+  mcqOptions = ['', '', '', '']; 
   wrongAnswer = signal('');
   
   analysisData = {
@@ -265,8 +371,15 @@ export class MistakeIngestComponent {
   tagsString = signal('');
   userNotes = signal('');
 
+  // Cropping State
+  isCropping = signal(false);
+  cropSrc = signal('');
+  cropBox = signal<{x:number, y:number, w:number, h:number} | null>(null);
+  private isDraggingCrop = false;
+  private cropStart = {x:0, y:0};
+  @ViewChild('cropImg') cropImgRef!: ElementRef<HTMLImageElement>;
+
   constructor() {
-    // Global mouse move for resizing
     window.addEventListener('mousemove', (e) => {
       if (this.isResizing) {
         const percent = (e.clientX / window.innerWidth) * 100;
@@ -277,29 +390,31 @@ export class MistakeIngestComponent {
         this.isDesktop = window.innerWidth >= 768;
     });
 
-    // Listen for Edit Mode
     effect(() => {
         const editing = this.store.editingMistake();
         if (editing) {
             this.step.set(1); 
             this.questionImage.set(editing.questionImage || null);
+            this.diagramSVG.set(editing.diagramSVG || ''); 
+            this.showOriginalImage = editing.showOriginalImage;
+            this.showRestoredImage = editing.showRestoredImage;
+            
             this.subject.set(editing.subject);
             this.questionType.set(editing.type);
             this.questionText.set(editing.questionText);
             
-            // Populate options
             this.mcqOptions = ['', '', '', ''];
             if (editing.options) {
                 editing.options.forEach((opt, i) => { if(i<4) this.mcqOptions[i] = opt; });
             }
 
-            this.wrongAnswer.set(editing.wrongAnswer);
+            this.wrongAnswer.set(editing.wrongAnswer || '');
             this.userNotes.set(editing.userNotes);
             
             this.analysisData = {
                 correctAnswer: editing.correctAnswer,
                 explanation: editing.explanation,
-                errorDiagnosis: editing.aiDiagnosis,
+                errorDiagnosis: editing.aiDiagnosis || '',
                 coreConcept: editing.analysis.coreConcept,
                 tags: editing.tags,
                 difficultyRating: editing.difficultyRating
@@ -313,12 +428,12 @@ export class MistakeIngestComponent {
       this.showMobilePreview.update(v => !v);
   }
 
-  // Getter to fix template error
   get hasMcqOptions() {
     return this.mcqOptions.some(o => !!o);
   }
 
-  // Drag & Drop / Paste Logic
+  // --- Image Handling ---
+
   onDragOver(e: DragEvent) { e.preventDefault(); }
   onDrop(e: DragEvent) {
     e.preventDefault();
@@ -341,17 +456,20 @@ export class MistakeIngestComponent {
   
   async processImageBase64(base64: string) {
     this.questionImage.set(base64);
+    this.diagramSVG.set(''); 
     this.isProcessing.set(true);
     try {
-        const result = await this.gemini.recognizeQuestionFromImage(base64.split(',')[1]);
+        const result = await this.gemini.recognizeQuestionFromImage(
+            base64.split(',')[1],
+            this.removeHandwriting()
+        );
         this.questionText.set(result.questionText);
-        // Auto-fill logic
+        if (result.diagramSVG) this.diagramSVG.set(result.diagramSVG);
+        
         if (!this.subject() && result.subject) this.subject.set(result.subject);
         if (!this.questionType() && result.type) this.questionType.set(result.type as any);
         
-        // Fill options if detected
         if (result.options && Array.isArray(result.options)) {
-             // Reset options first
              this.mcqOptions = ['', '', '', ''];
              result.options.forEach((opt: string, i: number) => {
                  if (i < 4) this.mcqOptions[i] = opt;
@@ -363,7 +481,72 @@ export class MistakeIngestComponent {
     } finally { this.isProcessing.set(false); }
   }
 
-  // Resizable Logic
+  // --- Cropping Logic ---
+  
+  openCropper() {
+      if(this.questionImage()) {
+          this.cropSrc.set(this.questionImage()!);
+          this.isCropping.set(true);
+          this.cropBox.set(null);
+      }
+  }
+
+  onCropImgLoad() {}
+
+  startCrop(e: MouseEvent) {
+      this.isDraggingCrop = true;
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      this.cropStart = {x, y};
+      this.cropBox.set({x, y, w:0, h:0});
+  }
+
+  doCrop(e: MouseEvent) {
+      if(!this.isDraggingCrop) return;
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      const currentX = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+      const currentY = Math.max(0, Math.min(rect.height, e.clientY - rect.top));
+      
+      const w = Math.abs(currentX - this.cropStart.x);
+      const h = Math.abs(currentY - this.cropStart.y);
+      const x = Math.min(currentX, this.cropStart.x);
+      const y = Math.min(currentY, this.cropStart.y);
+      
+      this.cropBox.set({x, y, w, h});
+  }
+
+  endCrop() {
+      this.isDraggingCrop = false;
+  }
+
+  applyCrop() {
+      const box = this.cropBox();
+      const img = this.cropImgRef?.nativeElement;
+      if(!box || !img || box.w < 5 || box.h < 5) return;
+
+      const canvas = document.createElement('canvas');
+      const scaleX = img.naturalWidth / img.width;
+      const scaleY = img.naturalHeight / img.height;
+
+      canvas.width = box.w * scaleX;
+      canvas.height = box.h * scaleY;
+      
+      const ctx = canvas.getContext('2d');
+      if(ctx) {
+          ctx.drawImage(
+              img, 
+              box.x * scaleX, box.y * scaleY, box.w * scaleX, box.h * scaleY,
+              0, 0, canvas.width, canvas.height
+          );
+          this.questionImage.set(canvas.toDataURL('image/jpeg'));
+          this.isCropping.set(false);
+          // Re-trigger OCR on cropped image? Optional, maybe user just wants to clean up visual
+      }
+  }
+
+  // --- Rest of Component ---
+
   startResize(e: MouseEvent) { this.isResizing = true; }
   stopResize() { this.isResizing = false; }
   
@@ -372,18 +555,19 @@ export class MistakeIngestComponent {
       this.analysisData.tags = val.split(/[,，、]/).map(t => t.trim()).filter(t => t);
   }
 
+  renderSafeHtml(html: string) {
+      return this.sanitizer.bypassSecurityTrustHtml(html);
+  }
+
   renderMarkdown(text: string) {
-    if (!text) return this.sanitizer.bypassSecurityTrustHtml('<span class="text-gray-600 italic">...</span>');
+    if (!text) return this.sanitizer.bypassSecurityTrustHtml('');
     
+    // ... (same markdown logic)
     const mathBlocks: {tex: string, display: boolean}[] = [];
-    
-    // Protect $$...$$ blocks first
     let protectedText = String(text).replace(/\$\$([\s\S]*?)\$\$/g, (match, content) => {
         mathBlocks.push({ tex: content, display: true });
         return `@@MATH_${mathBlocks.length - 1}@@`;
     });
-
-    // Protect $...$ inline blocks
     protectedText = protectedText.replace(/\$([^$]+?)\$/g, (match, content) => {
         mathBlocks.push({ tex: content, display: false });
         return `@@MATH_${mathBlocks.length - 1}@@`;
@@ -392,50 +576,53 @@ export class MistakeIngestComponent {
     let html = '';
     try {
         html = marked.parse(protectedText);
-
-        // Restore and render KaTeX
         html = html.replace(/<p>@@MATH_(\d+)@@<\/p>/g, (match, indexStr) => {
             const index = parseInt(indexStr, 10);
             const block = mathBlocks[index];
             if (block && block.display) {
                 try {
                     return katex.renderToString(block.tex, { throwOnError: false, displayMode: true });
-                } catch (e) { console.error('KaTeX block rendering error:', e); return match; }
+                } catch (e) { return match; }
             }
             return `@@MATH_${index}@@`;
         });
-
         html = html.replace(/@@MATH_(\d+)@@/g, (match, indexStr) => {
             const index = parseInt(indexStr, 10);
             const block = mathBlocks[index];
             if (block) {
                 try {
                     return katex.renderToString(block.tex, { throwOnError: false, displayMode: block.display });
-                } catch (e) { console.error('KaTeX inline rendering error:', e); return match; }
+                } catch (e) { return match; }
             }
             return match;
         });
     } catch (e) {
-        console.warn('Markdown parsing error:', e);
         return this.sanitizer.bypassSecurityTrustHtml(String(text).replace(/</g, '&lt;'));
     }
-    
     return this.sanitizer.bypassSecurityTrustHtml(html);
+  }
+
+  isCorrectAnswer(opt: string) {
+      return this.analysisData.correctAnswer.toUpperCase().includes(opt);
   }
 
   async analyze() {
     this.isProcessing.set(true);
     try {
+      // Pass undefined if wrongAnswer is empty
       const result = await this.gemini.solveAndAnalyze(
         this.questionText(),
-        this.wrongAnswer() || "No answer provided",
+        this.wrongAnswer() ? this.wrongAnswer() : undefined,
         this.subject() || "General",
         this.questionImage() ? this.questionImage()!.split(',')[1] : undefined
       );
       this.analysisData = result;
+      // Handle optional diagnosis
+      if (!result.errorDiagnosis) this.analysisData.errorDiagnosis = '';
+      
       this.tagsString.set(result.tags.join(', '));
       this.step.set(2);
-    } catch (e) { alert('API Error'); } finally { this.isProcessing.set(false); }
+    } catch (e) { alert('API Error: ' + e); } finally { this.isProcessing.set(false); }
   }
 
   async polishNotes() {
@@ -452,12 +639,17 @@ export class MistakeIngestComponent {
       type: (this.questionType() as any) || 'short',
       tags: this.analysisData.tags,
       questionText: this.questionText(),
+      
       questionImage: this.questionImage() || undefined,
-      options: this.mcqOptions.filter(o => o), // Store clean options
-      wrongAnswer: this.wrongAnswer(),
+      diagramSVG: this.diagramSVG() || undefined,
+      showOriginalImage: this.showOriginalImage,
+      showRestoredImage: this.showRestoredImage,
+
+      options: this.mcqOptions.filter(o => o), 
+      wrongAnswer: this.wrongAnswer() || undefined,
       correctAnswer: this.analysisData.correctAnswer,
       explanation: this.analysisData.explanation,
-      aiDiagnosis: this.analysisData.errorDiagnosis,
+      aiDiagnosis: this.analysisData.errorDiagnosis || undefined,
       userNotes: this.userNotes(),
       difficultyRating: this.analysisData.difficultyRating,
       analysis: {
@@ -470,26 +662,27 @@ export class MistakeIngestComponent {
     };
 
     if (this.store.editingMistake()) {
-        // Update existing
         this.store.updateMistake(this.store.editingMistake()!.id, dataToSave);
     } else {
-        // Create new
         this.store.addMistake(dataToSave);
     }
 
     this.reset();
-    this.store.setTab('library');
+    this.store.setTab('dashboard'); // Go back to dashboard after save
   }
 
   reset() {
     this.step.set(1);
     this.questionText.set('');
     this.questionImage.set(null);
+    this.diagramSVG.set('');
     this.wrongAnswer.set('');
     this.userNotes.set('');
     this.mcqOptions = ['', '', '', ''];
     this.tagsString.set('');
     this.analysisData = { correctAnswer: '', explanation: '', errorDiagnosis: '', coreConcept: '', tags: [], difficultyRating: 3 };
     this.store.clearEditing();
+    this.showOriginalImage = true;
+    this.showRestoredImage = true;
   }
 }
