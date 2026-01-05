@@ -201,7 +201,7 @@ declare const katex: any;
                  @if (hasMcqOptions) {
                     <ul class="list-none pl-0 space-y-1 mt-4">
                        @for(opt of mcqOptions; track $index) {
-                          @if(opt) { <li class="text-gray-400"><strong class="text-gray-500">{{['A','B','C','D'][$index]}}.</strong> {{opt}}</li> }
+                          @if(opt) { <li class="text-gray-400 flex items-start gap-2"><strong class="text-gray-500 shrink-0">{{['A','B','C','D'][$index]}}.</strong> <span [innerHTML]="renderMarkdown(opt)"></span></li> }
                        }
                     </ul>
                  }

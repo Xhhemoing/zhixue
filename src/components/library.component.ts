@@ -73,7 +73,7 @@ declare const katex: any;
                         <td class="md:px-6 md:py-3 mb-2 md:mb-0 block md:table-cell">
                            <div class="flex items-center gap-3">
                               @if (mistake.questionImage) { <img [src]="mistake.questionImage" class="w-12 h-12 md:w-8 md:h-8 object-cover rounded bg-black shrink-0"> }
-                              <div class="max-w-xs truncate text-gray-200 text-sm font-medium">{{mistake.questionText}}</div>
+                              <div class="max-w-xs text-gray-200 text-sm font-medium markdown-inline" [innerHTML]="renderMarkdown(mistake.questionText)"></div>
                            </div>
                         </td>
                         <td class="md:px-6 md:py-3 block md:table-cell text-xs mb-1 md:mb-0"><span class="px-2 py-0.5 rounded bg-indigo-900/20 text-indigo-400 border border-indigo-900/30">{{mistake.subject}}</span></td>
@@ -94,7 +94,8 @@ declare const katex: any;
 
          <!-- GRID VIEW -->
          @if (viewMode() === 'grid') {
-            <div class="grid p-4 gap-4 grid-cols-2 md:grid-cols-auto-fill" [style.--card-size]="cardSize() + 'px'">
+            <!-- Use responsive-grid class instead of md:grid-cols-auto-fill to allow custom CSS to work -->
+            <div class="grid p-4 gap-4 grid-cols-2 responsive-grid" [style.--card-size]="cardSize() + 'px'">
                @for (mistake of filteredMistakes(); track mistake.id) {
                   <div (click)="openDetail(mistake)" class="aspect-[3/4] bg-[#18181b] border border-gray-700 rounded-xl overflow-hidden hover:border-indigo-500 transition-all cursor-pointer flex flex-col group relative">
                      <div class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
@@ -109,7 +110,8 @@ declare const katex: any;
                         <div class="absolute bottom-2 left-2 px-2 py-0.5 bg-black/60 rounded text-[10px] text-white backdrop-blur-sm shadow-sm">{{mistake.subject}}</div>
                      </div>
                      <div class="flex-1 p-3 flex flex-col">
-                        <div class="text-xs text-gray-300 font-medium line-clamp-3 mb-2 leading-relaxed">{{mistake.questionText}}</div>
+                        <!-- Use innerHTML for markdown rendering in card summary -->
+                        <div class="text-xs text-gray-300 font-medium line-clamp-3 mb-2 leading-relaxed markdown-inline" [innerHTML]="renderMarkdown(mistake.questionText)"></div>
                         <div class="mt-auto flex flex-wrap gap-1">
                            @for(tag of mistake.tags.slice(0,2); track tag) { <span class="text-[9px] text-gray-400 bg-gray-800 px-1 rounded border border-gray-700">{{tag}}</span> }
                         </div>
@@ -156,8 +158,10 @@ declare const katex: any;
                           @if (selectedMistake()?.options && selectedMistake()?.options!.length > 0) {
                               <div class="mt-6 space-y-2">
                                   @for(opt of selectedMistake()?.options; track $index) {
-                                      <div class="p-3 border border-gray-700 rounded-lg text-sm text-gray-300">
-                                          <span class="font-bold mr-2 text-gray-500">{{['A','B','C','D'][$index]}}.</span> {{opt}}
+                                      <div class="p-3 border border-gray-700 rounded-lg text-sm text-gray-300 flex">
+                                          <span class="font-bold mr-2 text-gray-500 shrink-0">{{['A','B','C','D'][$index]}}.</span> 
+                                          <!-- Render Markdown for options -->
+                                          <div class="markdown-inline" [innerHTML]="renderMarkdown(opt)"></div>
                                       </div>
                                   }
                               </div>
@@ -191,9 +195,13 @@ declare const katex: any;
     </div>
   `,
   styles: [`
+     /* Force compact markdown in summaries */
+     ::ng-deep .markdown-inline p { margin: 0 !important; display: inline; }
+     
      @media (min-width: 768px) {
-        .grid-cols-auto-fill {
-           grid-template-columns: repeat(auto-fill, minmax(var(--card-size), 1fr));
+        /* Override tailwind default grid to allow dynamic sizing */
+        .responsive-grid {
+           grid-template-columns: repeat(auto-fill, minmax(var(--card-size), 1fr)) !important;
         }
      }
   `]
